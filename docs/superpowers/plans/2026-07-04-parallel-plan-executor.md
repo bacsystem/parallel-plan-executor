@@ -737,14 +737,31 @@ Expected: FAIL — `scripts/build-workflow.js` does not exist
 
 - [ ] **Step 3: Write minimal implementation**
 
+This reuses the real `superpowers:subagent-driven-development` machinery (not an ad-hoc
+reimplementation): each task-agent runs that skill's own `scripts/task-brief` and
+`scripts/review-package` via Bash, and the implementer/reviewer prompts are condensed
+versions of that skill's `implementer-prompt.md`/`task-reviewer-prompt.md` templates —
+same two-verdict review contract, same DONE/DONE_WITH_CONCERNS/BLOCKED/NEEDS_CONTEXT
+status contract, same progress ledger. Two adaptations, because a `Workflow` cannot pause
+mid-run for a human the way the main loop does:
+
+- **NEEDS_CONTEXT / BLOCKED:** there's no live controller to answer a question mid-run,
+  so both statuses are treated as "blocked" — recorded in the ledger and surfaced in the
+  final report for you to resolve afterward, not paused-and-asked.
+- **Parallel dispatch:** the skill's own Red Flag against dispatching multiple
+  implementers in parallel assumes a shared working tree; `isolation: 'worktree'` on each
+  implementer call is what makes it safe here (see design spec §4.3).
+
 `workflows/parallel-plan-executor.template.js`:
 ```js
 export const meta = {
   name: 'parallel-plan-executor',
-  description: 'Execute a writing-plans implementation plan with independent tasks run in parallel via a dependency DAG',
+  description: 'Execute a writing-plans implementation plan with independent tasks run in parallel via a dependency DAG, reusing subagent-driven-development\'s task-brief/review-package/ledger machinery',
   phases: [
-    { title: 'Execute tasks' },
+    { title: 'Implement' },
+    { title: 'Review' },
     { title: 'Merge' },
+    { title: 'Final review' },
   ],
 }
 
@@ -753,6 +770,44 @@ export const meta = {
 const { graph, tasks, planPath, repoPath } = args;
 const tasksById = new Map(tasks.map((t) => [t.id, t]));
 
+const FIND_SDD_SCRIPTS =
+  'Locate the superpowers:subagent-driven-development skill\'s scripts directory — search ' +
+  'under the Claude Code plugin cache for a path ending in ' +
+  '"subagent-driven-development/scripts" (it contains task-brief and review-package).';
+
+const IMPLEMENTER_SCHEMA = {
+  type: 'object',
+  properties: {
+    status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'BLOCKED', 'NEEDS_CONTEXT'] },
+    branch: { type: 'string' },
+    baseSha: { type: 'string' },
+    headSha: { type: 'string' },
+    commitSummary: { type: 'string' },
+    testSummary: { type: 'string' },
+    reportFile: { type: 'string' },
+    concerns: { type: 'string' },
+  },
+  required: ['status', 'branch', 'baseSha', 'headSha', 'reportFile'],
+};
+
+const REVIEWER_SCHEMA = {
+  type: 'object',
+  properties: {
+    specVerdict: { enum: ['PASS', 'FAIL'] },
+    qualityVerdict: { enum: ['APPROVED', 'NEEDS_FIXES'] },
+    findings: { type: 'string' },
+  },
+  required: ['specVerdict', 'qualityVerdict', 'findings'],
+};
+
+function appendLedger(line) {
+  return agent(
+    `In repo ${repoPath}, append this exact line to .superpowers/sdd/progress.md ` +
+    `(create the file and its directory if missing): "${line}"`,
+    { label: 'ledger', phase: 'Merge' }
+  );
+}
+
 let mergeQueueTail = Promise.resolve();
 function enqueueMerge(fn) {
   const next = mergeQueueTail.then(fn, fn);
@@ -760,44 +815,99 @@ function enqueueMerge(fn) {
   return next;
 }
 
-async function runTask(taskId) {
-  const task = tasksById.get(taskId);
-
-  await agent(
-    `Read Task ${taskId} ("${task.title}") from the plan at ${planPath} in repo ${repoPath}. ` +
-    `Follow its steps exactly: write the failing test, verify it fails, implement the ` +
-    `minimal code to pass, verify it passes, commit. Then detect and run the project's own ` +
-    `test/lint command (same detection heuristic as the git-flow skill's ` +
-    `references/verify-commands.md) and report PASS/FAIL.`,
-    { label: `task-${taskId}`, phase: 'Execute tasks', isolation: 'worktree' }
-  );
-
-  const review = await agent(
-    `Adversarially review the changes just made for Task ${taskId} ("${task.title}") of the ` +
-    `plan at ${planPath}. Check for bugs and deviations from the task's own spec. Reply ` +
-    `starting with "REAL ISSUES FOUND:" followed by specifics, or "NO ISSUES".`,
-    { label: `review-${taskId}`, phase: 'Execute tasks' }
-  );
-
-  if (review && /REAL ISSUES FOUND/i.test(review)) {
-    log(`Task ${taskId}: adversarial review found issues, retrying once`);
-    await agent(
-      `Fix these issues found in your Task ${taskId} changes: ${review}`,
-      { label: `fix-${taskId}`, phase: 'Execute tasks' }
-    );
-  }
-
-  return enqueueMerge(() =>
-    agent(
-      `Merge the worktree branch for Task ${taskId} into the integration branch of repo ` +
-      `${repoPath}. If there is a real merge conflict, stop and report it — do not resolve ` +
-      `it automatically.`,
-      { label: `merge-${taskId}`, phase: 'Merge' }
-    )
+async function implement(task) {
+  return agent(
+    `You are implementing Task ${task.id}: "${task.title}", from the plan at ${planPath}, ` +
+    `in repo ${repoPath}.\n\n` +
+    `${FIND_SDD_SCRIPTS} Run: task-brief ${planPath} ${task.id} — it prints your brief ` +
+    `file path. Read ONLY that brief file for your requirements, not the whole plan.\n\n` +
+    `Read the "## Global Constraints" section from ${planPath} yourself — it binds this task.\n\n` +
+    `Before starting: create and switch to branch task-${task.id} (a fixed, predictable ` +
+    `name so a later fix round can find it), then record its parent commit SHA as baseSha.\n\n` +
+    `Follow superpowers:test-driven-development for every code change. Implement exactly ` +
+    `what the brief specifies, write tests, verify RED then GREEN, commit, then self-review ` +
+    `(completeness, quality, YAGNI discipline, test hygiene) before reporting.\n\n` +
+    `Write your full report (what you built, TDD evidence, files changed, self-review ` +
+    `findings) to .superpowers/sdd/task-${task.id}-report.md in repo ${repoPath}, then ` +
+    `record HEAD's SHA as headSha and report back via the required fields. Use BLOCKED or ` +
+    `NEEDS_CONTEXT if you cannot proceed — there is no one to ask mid-run, so describe ` +
+    `exactly what's missing in "concerns"; it will be resolved after this run, not now.`,
+    { label: `implement-${task.id}`, phase: 'Implement', isolation: 'worktree', schema: IMPLEMENTER_SCHEMA }
   );
 }
 
+async function review(task, impl) {
+  return agent(
+    `You are reviewing Task ${task.id}: "${task.title}" from the plan at ${planPath}. This ` +
+    `is a task-scoped gate (spec compliance + code quality), not a merge review.\n\n` +
+    `${FIND_SDD_SCRIPTS} Run: review-package ${impl.baseSha} ${impl.headSha} — it prints a ` +
+    `diff package file. Read that file once; it is your view of the change, do not re-run git.\n\n` +
+    `Read the task brief already written at .superpowers/sdd/task-${task.id}-brief.md and the ` +
+    `implementer's report at ${impl.reportFile}. Treat the report as unverified claims — ` +
+    `verify against the diff.\n\n` +
+    `Read the "## Global Constraints" section from ${planPath} yourself — it binds this task.\n\n` +
+    `Report: Part 1 spec compliance (Missing/Extra/Misunderstood, file:line) — verdict PASS ` +
+    `or FAIL. Part 2 code quality (Critical/Important/Minor findings, file:line) — verdict ` +
+    `APPROVED or NEEDS_FIXES. Findings text goes in "findings"; both verdicts are required ` +
+    `fields.`,
+    { label: `review-${task.id}`, phase: 'Review', schema: REVIEWER_SCHEMA }
+  );
+}
+
+async function fix(task, impl, findings) {
+  return agent(
+    `On branch task-${task.id} in repo ${repoPath} (do not create a new worktree — check out ` +
+    `that existing branch), fix these review findings for Task ${task.id}: ${findings}\n\n` +
+    `Re-run the tests covering your change and append the results to ` +
+    `${impl.reportFile}. Report back the new HEAD SHA as headSha (baseSha and branch stay ` +
+    `the same).`,
+    { label: `fix-${task.id}`, phase: 'Implement', schema: IMPLEMENTER_SCHEMA }
+  );
+}
+
+async function runTask(taskId) {
+  const task = tasksById.get(taskId);
+  let impl = await implement(task);
+
+  if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
+    await appendLedger(`Task ${taskId}: ${impl.status} — ${impl.concerns ?? 'no detail given'}`);
+    throw new Error(`Task ${taskId} ${impl.status}: ${impl.concerns ?? 'no detail given'}`);
+  }
+
+  let verdict = await review(task, impl);
+  if (verdict.qualityVerdict === 'NEEDS_FIXES' || verdict.specVerdict === 'FAIL') {
+    log(`Task ${taskId}: review found issues, fixing once`);
+    impl = await fix(task, impl, verdict.findings);
+    verdict = await review(task, impl);
+    if (verdict.qualityVerdict === 'NEEDS_FIXES' || verdict.specVerdict === 'FAIL') {
+      await appendLedger(`Task ${taskId}: blocked — review still failing after one fix round`);
+      throw new Error(`Task ${taskId}: review still failing after one fix round: ${verdict.findings}`);
+    }
+  }
+
+  await enqueueMerge(() =>
+    agent(
+      `Merge branch task-${taskId} into the integration branch of repo ${repoPath}. If there ` +
+      `is a real merge conflict, stop and report it — do not resolve it automatically.`,
+      { label: `merge-${taskId}`, phase: 'Merge' }
+    )
+  );
+  await appendLedger(`Task ${taskId}: complete (commits ${impl.baseSha.slice(0, 7)}..${impl.headSha.slice(0, 7)}, review clean)`);
+  return impl;
+}
+
 const results = await runDag(graph, runTask);
+
+const mergedCount = [...results.values()].filter((r) => r.status === 'done').length;
+let finalReview = null;
+if (mergedCount > 0) {
+  finalReview = await agent(
+    `Do a broad whole-branch review of repo ${repoPath}'s integration branch against the ` +
+    `full plan at ${planPath} (use superpowers:requesting-code-review's code-reviewer ` +
+    `template). Check cross-task consistency the per-task reviews couldn't see.`,
+    { label: 'final-review', phase: 'Final review', effort: 'high' }
+  );
+}
 
 const summaryLines = [...results.entries()].map(([id, r]) => {
   if (r.status === 'done') return `Task ${id}: done`;
@@ -805,8 +915,9 @@ const summaryLines = [...results.entries()].map(([id, r]) => {
   return `Task ${id}: skipped — ${r.reason}`;
 });
 log(summaryLines.join('\n'));
+if (finalReview) log(`Final whole-branch review:\n${finalReview}`);
 
-return { results: Object.fromEntries(results) };
+return { results: Object.fromEntries(results), finalReview };
 ```
 
 `scripts/build-workflow.js`:
