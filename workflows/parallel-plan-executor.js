@@ -98,6 +98,15 @@ const REVIEWER_SCHEMA = {
   required: ['specVerdict', 'qualityVerdict', 'findings'],
 };
 
+const MERGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    mergeStatus: { enum: ['MERGED', 'CONFLICT'] },
+    detail: { type: 'string' },
+  },
+  required: ['mergeStatus'],
+};
+
 function appendLedger(line) {
   return agent(
     `In repo ${repoPath}, append this exact line to .superpowers/sdd/progress.md ` +
@@ -204,13 +213,22 @@ async function runTask(taskId) {
     }
   }
 
-  await enqueueMerge(() =>
+  const mergeResult = await enqueueMerge(() =>
     agent(
-      `Merge branch task-${taskId} into the integration branch of repo ${repoPath}. If there ` +
-      `is a real merge conflict, stop and report it — do not resolve it automatically.`,
-      { label: `merge-${taskId}`, phase: 'Merge' }
+      `Merge branch task-${taskId} into the integration branch of repo ${repoPath}. Report ` +
+      `mergeStatus MERGED on success. If there is a real merge conflict, do not resolve it ` +
+      `automatically — stop and report mergeStatus CONFLICT with the conflict details in "detail".`,
+      { label: `merge-${taskId}`, phase: 'Merge', schema: MERGE_SCHEMA }
     )
   );
+
+  if (mergeResult.mergeStatus === 'CONFLICT') {
+    await appendLedger(`Task ${taskId}: merge CONFLICT — ${mergeResult.detail ?? 'no detail given'}`);
+    settledCount += 1;
+    log(`${progressBar()} — Task ${taskId} FAILED (merge conflict)`);
+    throw new Error(`Task ${taskId} merge CONFLICT: ${mergeResult.detail ?? 'no detail given'}`);
+  }
+
   await appendLedger(
     `Task ${taskId}: complete ${impl.startedAt}..${impl.finishedAt} ` +
     `(${formatDuration(impl.startedAt, impl.finishedAt)}, commits ` +
