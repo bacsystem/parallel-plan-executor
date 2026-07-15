@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { parsePlan } from '../src/plan-parser.js';
+import { parsePlan, parsePlanWithDiagnostics } from '../src/plan-parser.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const samplePlan = readFileSync(path.join(here, 'fixtures/sample-plan.md'), 'utf8');
@@ -49,6 +49,173 @@ test('handles a real excerpt from the business-core plan without throwing', () =
   const tasks = parsePlan(excerpt);
   assert.ok(tasks.length >= 1);
   assert.ok(tasks[0].title.length > 0);
+});
+
+test('solo extrae símbolos entre backticks, ignorando las palabras de prosa', () => {
+  const text = [
+    '### Task 1: X',
+    '',
+    '**Interfaces:**',
+    '- Consumes: the `loadConfig()` helper and the widget utilities from task 3',
+    '- Produces: the `makeA()` factory used by every later task that needs widgets',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const [task] = parsePlan(text);
+  assert.deepEqual(task.interfaces.consumes, ['loadConfig']);
+  assert.deepEqual(task.interfaces.produces, ['makeA']);
+});
+
+test('trata "Consumes: None" y "Produces: None" como interfaces vacías', () => {
+  const text = [
+    '### Task 1: X',
+    '',
+    '**Interfaces:**',
+    '- Consumes: None',
+    '- Produces: None (pure scaffolding)',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const [task] = parsePlan(text);
+  assert.deepEqual(task.interfaces, { consumes: [], produces: [] });
+});
+
+test('rechaza un plan con ids de tarea duplicados en vez de perder una tarea en silencio', () => {
+  const text = [
+    '### Task 1: A',
+    '',
+    '- [ ] **Step 1: x**',
+    '',
+    '### Task 1: B',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  assert.throws(() => parsePlan(text), /[Dd]uplicate task id 1/);
+});
+
+test('preserva rutas con dos puntos (drive de Windows) al quitar rangos de líneas', () => {
+  const text = [
+    '### Task 1: X',
+    '',
+    '**Files:**',
+    '- Modify: `C:/legacy/app.py:10-20`',
+    '- Modify: `src/utils.py:88`',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const [task] = parsePlan(text);
+  assert.deepEqual(task.files.modify, ['C:/legacy/app.py', 'src/utils.py']);
+});
+
+test('una sección termina también en un header bold de varias palabras', () => {
+  const text = [
+    '### Task 1: X',
+    '',
+    '**Files:**',
+    '- Create: `a.js`',
+    '',
+    '**Extra Notes:**',
+    '- Modify: `b.js` is mentioned here as prose, not as a Files entry',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const [task] = parsePlan(text);
+  assert.deepEqual(task.files.create, ['a.js']);
+  assert.deepEqual(task.files.modify, []);
+});
+
+test('una ruta entre backticks cuenta como UN símbolo, no como fragmentos', () => {
+  const text = [
+    '### Task 1: A',
+    '',
+    '**Interfaces:**',
+    '- Produces: `src/widgets/factory.js` module',
+    '',
+    '- [ ] **Step 1: x**',
+    '',
+    '### Task 2: B',
+    '',
+    '**Interfaces:**',
+    '- Consumes: `src/utils/helpers.js`',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const tasks = parsePlan(text);
+  assert.deepEqual(tasks[0].interfaces.produces, ['src/widgets/factory.js']);
+  assert.deepEqual(tasks[1].interfaces.consumes, ['src/utils/helpers.js'],
+    'fragmentar la ruta convertiría "src" en un símbolo compartido por medio plan');
+});
+
+test('quita también rangos de líneas múltiples (":10-20,40-55")', () => {
+  const text = [
+    '### Task 1: X',
+    '',
+    '**Files:**',
+    '- Modify: `src/app.py:10-20,40-55`',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const [task] = parsePlan(text);
+  assert.deepEqual(task.files.modify, ['src/app.py']);
+});
+
+test('una anotación bold con texto detrás NO termina la sección; un header solo en su línea sí', () => {
+  const text = [
+    '### Task 1: X',
+    '',
+    '**Files:**',
+    '- Create: `a.js`',
+    '',
+    '**Watch Out:** do not touch generated files',
+    '- Modify: `b.js`',
+    '',
+    '**Non-Goals:**',
+    '- Modify: `c.js` mentioned as prose only',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const [task] = parsePlan(text);
+  assert.deepEqual(task.files.create, ['a.js']);
+  assert.deepEqual(task.files.modify, ['b.js'],
+    'la anotación inline no debe cortar la sección (b.js se perdía en silencio)');
+});
+
+test('warns cuando una línea Consumes/Produces con contenido no tiene ningún backtick', () => {
+  const text = [
+    '### Task 1: A',
+    '',
+    '**Interfaces:**',
+    '- Produces: makeWidget() factory',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const { tasks, warnings } = parsePlanWithDiagnostics(text);
+  assert.deepEqual(tasks[0].interfaces.produces, []);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /Task 1/);
+  assert.match(warnings[0], /no backtick/);
+});
+
+test('no warnea por "None" ni por líneas vacías o correctamente backtickeadas', () => {
+  const text = [
+    '### Task 1: A',
+    '',
+    '**Interfaces:**',
+    '- Consumes: None',
+    '- Produces: None (pure scaffolding)',
+    '',
+    '- [ ] **Step 1: x**',
+    '',
+    '### Task 2: B',
+    '',
+    '**Interfaces:**',
+    '- Consumes:',
+    '- Produces: `makeB()`',
+    '',
+    '- [ ] **Step 1: x**',
+  ].join('\n');
+  const { warnings } = parsePlanWithDiagnostics(text);
+  assert.deepEqual(warnings, []);
 });
 
 test('parses a plan with CRLF line endings identically to LF', () => {
