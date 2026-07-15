@@ -222,6 +222,17 @@ function enqueueMerge(fn) {
   return next;
 }
 
+// Los agentes de fix hacen checkout de su rama task-<id> en el repo principal (no en un
+// worktree propio), y un repo git solo puede tener una rama checked out a la vez — dos
+// reviews fallidas concurrentes se pisarían el working tree. Misma solución que los
+// merges: una cola que los serializa.
+let fixQueueTail = Promise.resolve();
+function enqueueFix(fn) {
+  const next = fixQueueTail.then(fn, fn);
+  fixQueueTail = next.catch(() => {});
+  return next;
+}
+
 // Textual progress bar, emitted via log() after every task settles so the user
 // sees advancement in the narrator lines without opening /workflows.
 let settledCount = 0;
@@ -305,7 +316,7 @@ async function runTask(taskId) {
   let verdict = await review(task, impl);
   if (verdict.qualityVerdict === 'NEEDS_FIXES' || verdict.specVerdict === 'FAIL') {
     log(`Task ${taskId}: review found issues, fixing once`);
-    impl = await fix(task, impl, verdict.findings);
+    impl = await enqueueFix(() => fix(task, impl, verdict.findings));
     verdict = await review(task, impl);
     if (verdict.qualityVerdict === 'NEEDS_FIXES' || verdict.specVerdict === 'FAIL') {
       await appendLedger(`Task ${taskId}: blocked — review still failing after one fix round`);

@@ -32,3 +32,11 @@ test('build script embeds the args validation and the template invokes it before
     'validation must run before any agent() call'
   );
 });
+
+test('built workflow serializes fix agents through a dedicated queue', () => {
+  execFileSync('node', [path.join(root, 'scripts', 'build-workflow.js')]);
+  const output = readFileSync(path.join(root, 'workflows', 'parallel-plan-executor.js'), 'utf8');
+
+  assert.ok(output.includes('function enqueueFix('));
+  assert.ok(output.includes('enqueueFix(() => fix(task, impl'), 'runTask must route fix() through the queue');
+});
