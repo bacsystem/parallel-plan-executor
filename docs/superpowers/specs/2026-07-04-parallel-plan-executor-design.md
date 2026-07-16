@@ -200,11 +200,11 @@ tiempo de reloj.
 
 | Caso | Manejo |
 |---|---|
-| Dependencia no detectada por el parser (falso negativo) | La tarea falla por símbolo inexistente/error de import → se trata como *posible bloqueo por dependencia faltante*, se reintenta una vez más tarde (cuando más del DAG haya cerrado). Si vuelve a fallar igual, se marca bloqueada. |
+| Dependencia no detectada por el parser (falso negativo) | La tarea arranca sin su dependencia real y falla ruidosamente (o se auto-reporta `BLOCKED`); sus dependientes transitivos se marcan `skipped`, sin intentarse. Todo esto queda asentado en el reporte final — no hay reintento automático en v1 (ver sección 7). |
 | Fallo real de verificación (bug, no dependencia) | El revisor adversarial lo detecta → un reintento con su feedback → si sigue fallando, se marca **bloqueada**, no se mergea, pero las ramas independientes del DAG siguen su curso. |
 | Tarea bloqueada con dependientes | Todo lo que dependía de ella se marca `skipped — blocked by Task N`, sin intentarse. |
 | Conflicto real de merge (no el de manifiesto, ya evitado con worktrees) | Se detiene esa rama del DAG, se reporta, no se auto-resuelve. |
-| Ciclo en el grafo | Defensivo: si el parser detecta un ciclo, se detiene todo antes de ejecutar nada — señal de plan malformado. |
+| Ciclo en el grafo | Defensivo y en dos capas: `buildGraph` lo detecta al parsear, y el workflow revalida (`validateWorkflowArgs`) al arrancar — el grafo llega como JSON pegado a mano, y un ciclo no validado dejaría a `runDag` esperando su propia promesa para siempre (deadlock sin error). También se rechazan ids referenciados en `graph` que no existen en `tasks`. |
 | Cobertura | El reporte final siempre lista qué se saltó/bloqueó y por qué — nunca se reporta éxito parcial como si fuera completo. |
 
 ## 7. Decisiones YAGNI (evaluadas y descartadas)
@@ -225,6 +225,32 @@ tiempo de reloj.
   mitad de ejecución de forma nativa; se optó por verificación adversarial automática
   por tarea + un solo review humano al final, en vez de introducir checkpoints
   artificiales que reducirían la ganancia de velocidad.
+- **Reintento automático de una dependencia no detectada** (esperar a que más del DAG
+  haya cerrado y reintentar la tarea afectada antes de marcarla bloqueada): en v1 la
+  tarea simplemente falla ruidosamente (o reporta `BLOCKED`) y sus dependientes se
+  saltan, sin reintento — más simple y suficientemente seguro mientras el mecanismo real
+  de reintento no esté implementado. Se puede agregar después si en la práctica los
+  falsos negativos del parser resultan comunes.
+
+### 7.1 Decisiones agregadas en v0.2 (post-review)
+
+- **Productor duplicado es warning, no error**: si dos tareas declaran producir el mismo
+  símbolo es una ambigüedad real del plan, pero no impide ejecutar — el primer productor
+  sigue ganando (comportamiento de siempre) y la ambigüedad se expone en el stderr del CLI
+  y en el campo `warnings` del JSON. Elevarlo a error habría bloqueado planes válidos
+  donde el prose repite un identificador.
+- **Los agentes de fix se serializan** con una cola dedicada (mismo patrón que los
+  merges): hacen checkout de su rama `task-<id>` en el repo principal, y un repo git solo
+  puede tener una rama checked out a la vez — dos reviews fallidas concurrentes se
+  pisarían el working tree. Se evaluó darles worktree propio; la cola es más simple y las
+  rondas de fix son raras (a lo sumo una por tarea).
+- **Encadenamiento por archivo al último toque**: N tareas que tocan el mismo archivo se
+  serializan en cadena (2 depende de 1, 3 depende de 2), no todas contra la primera —
+  antes 2 y 3 corrían en paralelo sobre el mismo archivo y el conflicto lo atrapaba recién
+  el merge serializado.
+- **Los skips reportan la causa raíz**: el motivo distingue si el bloqueador falló o fue
+  a su vez skipped, y en cascadas apunta a la tarea que originó todo, no al eslabón
+  intermedio.
 
 ## 8. Testing (del propio workflow, antes de confiar en él)
 
