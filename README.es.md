@@ -40,6 +40,17 @@ Se instala desde el marketplace autohospedado de este repo, dentro de Claude Cod
 /plugin install cys@bacsystem
 ```
 
+La primera línea resuelve la forma corta `owner/repo` de GitHub. Dos
+alternativas equivalentes, por si las necesitás:
+
+```
+# URL completa de GitHub en vez de la forma corta
+/plugin marketplace add https://github.com/bacsystem/parallel-plan-executor
+
+# Un clon local en vez de GitHub (ej. para probar cambios sin commitear)
+/plugin marketplace add /ruta/absoluta/a/tu/clon
+```
+
 | Skill | Qué hace |
 |---|---|
 | `cys:design` | idea → spec |

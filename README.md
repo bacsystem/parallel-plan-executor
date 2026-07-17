@@ -41,6 +41,17 @@ Install it from this repo's self-hosted marketplace, inside Claude Code:
 /plugin install cys@bacsystem
 ```
 
+The first line resolves the short `owner/repo` GitHub form. Two equivalent
+alternatives, if you need them:
+
+```
+# Full GitHub URL instead of the short form
+/plugin marketplace add https://github.com/bacsystem/parallel-plan-executor
+
+# A local clone instead of GitHub (e.g. to test uncommitted changes)
+/plugin marketplace add /absolute/path/to/your/clone
+```
+
 | Skill | What it does |
 |---|---|
 | `cys:design` | idea → spec |
