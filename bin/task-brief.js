@@ -24,7 +24,7 @@ if (block === null) {
 
 // Escribe directo en el outDir final (el .cys/ del repo destino): así el brief queda
 // donde el reviewer lo va a leer, sin el paso frágil de "copialo si quedó en otro lado"
-// que necesitaba el script de superpowers (piloto, hallazgo F4).
+// que necesitaba el script externo al que este reemplaza (piloto, hallazgo F4).
 mkdirSync(outDir, { recursive: true });
 const briefPath = resolve(outDir, `task-${taskId}-brief.md`);
 writeFileSync(briefPath, block);

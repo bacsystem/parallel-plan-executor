@@ -2,15 +2,15 @@
 
 *[Read this in English](README.md)*
 
-Un `Workflow` de Claude Code que ejecuta un plan de implementación de
-`superpowers:writing-plans`, corriendo las tareas independientes **en paralelo** según un
-grafo de dependencias inferido del bloque `Consumes`/`Produces` de cada tarea — en vez de
-una tarea a la vez, como hace por defecto `superpowers:subagent-driven-development`.
+Un `Workflow` de Claude Code que ejecuta un plan de implementación de `cys:plan`,
+corriendo las tareas independientes **en paralelo** según un grafo de dependencias
+inferido del bloque `Consumes`/`Produces` de cada tarea — en vez de una tarea a la
+vez, como hacen los ejecutores secuenciales de planes.
 
 El **código que se genera** es agnóstico de tecnología: ya se validó con proyectos en
 Node y en Java/Spring Boot, y no hay nada en el diseño atado a un lenguaje en particular.
 
-Spec de diseño: `docs/superpowers/specs/2026-07-04-parallel-plan-executor-design.md`.
+Spec de diseño: `docs/cys/specs/2026-07-04-parallel-plan-executor-design.md`.
 
 ## ¿Qué tipo de cosa es esto? (¿plugin? ¿skill? ninguno)
 
@@ -24,7 +24,33 @@ extensión de Claude Code, distinto de plugins y skills:
   (`scriptPath: <clon>/workflows/parallel-plan-executor.js`) cuando se lo pedís.
 
 Lo único que sí se "instala" en el sentido de Claude Code es el comando opcional
-`/run-plan` (un solo archivo `.md` que copiás — ver más abajo).
+`/run-plan` (un solo archivo `.md` que copiás — ver más abajo), o el **plugin cys**
+que se describe a continuación.
+
+## El plugin cys
+
+**cys** es el plugin de skills de este repo: cinco skills que cubren el flujo completo
+**design → plan → run → check → ship**, nombrado en honor a las hijas gemelas del
+autor, **Cielo y Sophia**.
+
+Se instala desde el marketplace autohospedado de este repo, dentro de Claude Code:
+
+```
+/plugin marketplace add bacsystem/parallel-plan-executor
+/plugin install cys@bacsystem
+```
+
+| Skill | Qué hace |
+|---|---|
+| `cys:design` | idea → spec |
+| `cys:plan` | spec → plan de implementación |
+| `cys:run` | el Workflow de este repo — se lanza vía `/cys:run-plan` o `commands/run-plan.md` |
+| `cys:check` | revisión adversarial / verificación |
+| `cys:ship` | commit / bump de SemVer / PR |
+| `cys:guide` | índice — qué skill usar en cada momento |
+
+Nota: instalar el plugin también expone el `commands/run-plan.md` de este repo como el
+slash command `/cys:run-plan` — sin copiar archivos a mano.
 
 ## Requisitos
 
@@ -35,13 +61,11 @@ Lo único que sí se "instala" en el sentido de Claude Code es el comando opcion
   Gemini, etc.) pueda interpretar — el workflow en sí depende de Claude Code. Lo que sí es
   agnóstico es el **proyecto que termina automatizando**: puede ser Go, Node, Java, o
   cualquier stack que el plan describa.
-- **El plugin [superpowers](https://github.com/anthropics/claude-plugins), instalado en
-  Claude Code.** El *motor* ya no lo necesita: el workflow ahora trae sus propios scripts
-  `task-brief`/`review-package` en `bin/` y registra las corridas bajo `.cys/`. Sigue
-  siendo necesario hoy para **escribir los planes** (`superpowers:writing-plans`), hasta
-  que cys traiga sus propias skills de diseño/planes (ver la spec de diseño de cys,
-  fase F2). Instalar este repo **no** te instala superpowers — hacelo primero (ver
-  Instalación, paso 0).
+- **El plugin cys** (ver arriba) para escribir planes con `cys:plan`. El motor es
+  totalmente autocontenido: el workflow trae sus propios scripts
+  `task-brief`/`review-package` en `bin/` y registra las corridas bajo `.cys/`.
+  Cualquier plan que siga el formato `### Task N:` + `Consumes`/`Produces` funciona,
+  sin importar qué herramienta lo escribió.
 - **Node.js >= 20** (para `bin/parse-plan.js` y la suite de tests — ninguna dependencia
   de runtime, todo con el Node estándar).
 - Git, y un repo con working tree limpio para el proyecto que vas a automatizar.
@@ -51,11 +75,6 @@ Lo único que sí se "instala" en el sentido de Claude Code es el comando opcion
 ## Instalación
 
 ```bash
-# 0. Dentro de Claude Code, instalá el plugin superpowers si todavía no lo tenés:
-#    escribí /plugin, abrí el marketplace, e instalá "superpowers".
-#    Verificación: el listado de skills debería mostrar superpowers:writing-plans,
-#    superpowers:subagent-driven-development, etc.
-
 # 1. Cloná este repositorio (donde vive el workflow) en tu máquina.
 #    DÓNDE: donde quieras — tu carpeta de usuario, un directorio de herramientas, etc.
 #    NO necesita estar dentro de .claude/, y NO necesita estar al lado de los proyectos
@@ -137,10 +156,10 @@ conocés, la sección "Uso" de abajo es la referencia rápida.
 ### Paso 0 — Lo que necesitás tener listo antes de empezar
 
 - **Un plan de implementación aprobado**, con tareas numeradas y sus bloques
-  `Consumes`/`Produces` (el formato que produce la skill `superpowers:writing-plans`).
-  Si todavía no tenés uno, pedile a Claude Code, en el repo de tu proyecto: *"ayudame a
-  escribir un plan de implementación para [tu feature]"* — eso corre la skill
-  correspondiente y te deja el archivo del plan listo.
+  `Consumes`/`Produces` (el formato que produce la skill `cys:plan`). Si todavía no
+  tenés uno, pedile a Claude Code, en el repo de tu proyecto: *"ayudame a escribir un
+  plan de implementación para [tu feature]"* — con el plugin cys instalado eso corre
+  `cys:design` → `cys:plan` y te deja el archivo del plan listo.
 - **El repo que vas a automatizar**, con el working tree limpio (`git status` sin
   cambios pendientes) y, si vas a pedir `openPr: true` al final, con un remoto de GitHub
   ya configurado y `gh auth status` en verde.

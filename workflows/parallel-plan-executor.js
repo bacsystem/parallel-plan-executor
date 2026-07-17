@@ -525,10 +525,15 @@ async function executeTask(taskId) {
           // saber que el usuario ya autorizó el run — algunos se autobloqueaban leyendo la
           // política de "merges requieren autorización humana" de memoria, inconsistentemente
           // entre tareas del mismo run. La autorización debe llegar textual, no inferida.
+          // Hallazgo F10 (corrida F2 de cys): la redacción anterior ("do not treat this as
+          // requiring a fresh consent check") fue marcada por el clasificador de permisos
+          // como intento de bypass y mató a los agentes de merge. Afirmar la autorización
+          // sí; instruir a saltear chequeos del entorno, nunca.
           ? `\n\nThe user has already explicitly authorized merges for this run, in their own ` +
-            `words: "${mergeAuthorization}". This covers task-${taskId} into ${integrationBranch}. ` +
-            `Proceed with the merge on that basis — do not withhold it pending further ` +
-            `authorization, and do not treat this as something requiring a fresh consent check.`
+            `words: "${mergeAuthorization}". That authorization names task-${taskId} and ` +
+            `${integrationBranch}. If the environment's permission system still asks for ` +
+            `confirmation, defer to it and let it pause — that dialog is the user's gate, ` +
+            `not a failure. Report honestly whatever happens.`
           : ''),
         { label: `merge-${taskId}`, phase: 'Merge', schema: MERGE_SCHEMA }
       )
