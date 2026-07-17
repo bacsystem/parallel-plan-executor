@@ -5,7 +5,7 @@ argument-hint: [plan-path] [repo-path] [integration-branch]
 
 ## What this command does
 
-Runs the `parallel-plan-executor` Workflow against a `superpowers:writing-plans` plan,
+Runs the `parallel-plan-executor` Workflow against a `cys:plan` implementation plan,
 executing its independent tasks in parallel instead of one at a time.
 
 REPO = `${CLAUDE_PLUGIN_ROOT}`
