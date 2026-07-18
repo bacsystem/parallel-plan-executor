@@ -68,24 +68,65 @@ before picking a stage. On invocation, before presenting the flow table:
   only sections with at least one open item are shown (an empty "Bugs"
   heading is not printed).
 
-No other skill or command reads the file. `cys:design`, `cys:plan`,
-`cys:run`/`/cys:run-plan`, `/cys:flow`, `cys:check`, and `cys:ship` are
-unchanged — keeping this to one touch point means the reminder logic
-never has to be kept in sync across six places as cys evolves.
+No other skill or command *reads* the file to remind the user (see
+Automatic registration below for who *writes* to it). `cys:design` and
+`cys:plan` are unchanged.
+
+### Automatic registration
+
+Findings that come out of a review and are still unresolved when that
+review concludes get appended automatically — this is exactly the
+pattern already lived with Fase 4b's 3 Minor findings, which today just
+evaporate into chat once the conversation moves on. Two touch points,
+both places that already produce Critical/Important/Minor findings:
+
+- **The Workflow's Handoff agent** (`workflows-src/parallel-plan-executor.template.js`,
+  runs after the final whole-branch review and any fix round). By the
+  time it runs, Critical/Important findings are expected to already be
+  fixed (existing process); Minor findings typically are not. The Handoff
+  agent's prompt gets one more instruction: for every finding from the
+  final review that is still open (Minor, or an Important/Critical one
+  the user explicitly chose not to fix), append it to
+  `<repoPath>/.cys/pending.md` — creating the file with the three-section
+  skeleton if it doesn't exist yet. This reuses the agent's existing
+  Bash/Write access to the repo working tree; no new capability for the
+  sandboxed Workflow script itself. `handoff.md` gets one line noting how
+  many items were logged, so the user sees it without opening the file.
+- **`cys:check`**, run standalone (outside a `cys:run`). When the user
+  responds to a finding with something other than "fix it now" (defer,
+  "later", "not now"), `cys:check` appends it to `.cys/pending.md` the
+  same way, instead of just letting it drop out of the conversation.
+
+**Bug vs. Gap classification** is the writing agent's own call, using the
+same distinction as the manual convention: a finding describing broken or
+incorrect behavior → **Bugs**; a finding describing something missing,
+deferred, or outside the reviewed change's original scope → **Gaps**.
+Each appended line keeps the finding's own wording (no paraphrasing into
+something vaguer) and, where available, the file/commit reference the
+review already produced.
+
+**Tareas** is never auto-populated — it stays free-form, user/agent-typed
+during conversation, as originally designed.
 
 ## Out of scope
 
-- No automatic population from the Workflow engine (`parallel-plan-executor`)
-  — it stays a pure skill-level, manually-maintained file. Teaching the
-  sandboxed Workflow script to write a fourth `.cys/` artifact (beyond
-  `state.json`, ledger, reports) is unwarranted complexity for what is,
-  today, a note-taking convention.
+- `cys:design` and `cys:plan`'s own self-review steps do not write to
+  `pending.md` — deliberately deferred scope noted during spec/plan
+  writing (e.g. "evaluated and deferred" sections) stays in the spec
+  document itself, which is already the durable record for that kind of
+  decision. Revisit if this turns out to be a gap in practice.
 - No priority levels, due dates, owners, or other metadata — a flat
   checklist is enough for a single user's personal backlog.
 - No reminder in commands/skills other than `cys:guide` (see above).
 
 ## Testing
 
-`tests/skills.test.js` gets one new assertion: `skills/guide/SKILL.md`
-documents the `.cys/pending.md` convention and the three fixed section
-names (`Bugs`/`Gaps`/`Tareas`).
+- `tests/skills.test.js`: `skills/guide/SKILL.md` documents the
+  `.cys/pending.md` convention, the three fixed section names
+  (`Bugs`/`Gaps`/`Tareas`), and the reminder behavior; `skills/check/SKILL.md`
+  documents appending deferred findings to `.cys/pending.md`.
+- `tests/build-workflow.test.js`: the Handoff agent's prompt in
+  `workflows-src/parallel-plan-executor.template.js` mentions
+  `.cys/pending.md` and the Bug/Gap classification rule (built into
+  `workflows/parallel-plan-executor.js` via `npm run build`, per this
+  repo's existing convention — never hand-edit the generated file).
