@@ -93,6 +93,11 @@ Each step is one 2-5 minute action, with complete content — never
   enumerate each row as its own explicit test step — a summary claim
   without one step per row is a gap the plan itself introduced, not
   something later tasks can be trusted to infer.
+- **Version/toolchain enforcement:** if Global Constraints pin an exact
+  language/runtime version, at least one task must mechanically enforce
+  it (a toolchain config, version-check step, or equivalent that fails
+  the build on mismatch) — a config file merely declaring the version
+  isn't enforcement.
 
 ## Hand off
 

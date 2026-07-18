@@ -189,3 +189,11 @@ test('plan exige un test por fila cuando el spec afirma cobertura exhaustiva de 
     'cys:plan debe exigir enumerar cada fila como test explícito cuando el spec afirma cobertura exhaustiva'
   );
 });
+
+test('plan exige forzar mecánicamente una versión de lenguaje/runtime fijada en Global Constraints, no solo declararla (hallazgo real de persons-crud, JDK 17 sin enforcer)', () => {
+  const plan = readFileSync(path.join(skillsDir, 'plan', 'SKILL.md'), 'utf8');
+  assert.ok(
+    plan.includes('Version/toolchain enforcement'),
+    'cys:plan debe exigir que una versión fijada en Global Constraints quede forzada mecánicamente, no solo declarada'
+  );
+});

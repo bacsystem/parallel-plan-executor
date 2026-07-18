@@ -28,6 +28,10 @@ on another machine via Claude Code):
 - `cys:plan`'s self-review gained an "Exhaustive-coverage claims" rule:
   if a spec says a test suite covers every case in a table, the plan must
   enumerate each row as its own test step.
+- `cys:plan`'s self-review gained a "Version/toolchain enforcement" rule:
+  if Global Constraints pin an exact language/runtime version, at least
+  one task must mechanically enforce it, not just declare it in a config
+  file.
 
 ## 0.6.9 — 2026-07-18
 
