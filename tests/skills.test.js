@@ -64,6 +64,38 @@ test('cada skill existente tiene SKILL.md con frontmatter name/description váli
   }
 });
 
+test('los comandos crean la integrationBranch desde develop si no existe antes de lanzar (Fase 4a fix 1)', () => {
+  const flow = readFileSync(path.join(root, 'commands', 'flow.md'), 'utf8');
+  const runPlan = readFileSync(path.join(root, 'commands', 'run-plan.md'), 'utf8');
+  for (const [name, content] of [['flow.md', flow], ['run-plan.md', runPlan]]) {
+    assert.ok(
+      content.includes('create it from `develop`'),
+      `commands/${name} debe crear la rama de integración desde develop si no existe (antes solo cubría el caso "ya existe")`
+    );
+  }
+});
+
+test('los comandos detectan .cys/state.json de una corrida interrumpida (Fase 4b)', () => {
+  const flow = readFileSync(path.join(root, 'commands', 'flow.md'), 'utf8');
+  const runPlan = readFileSync(path.join(root, 'commands', 'run-plan.md'), 'utf8');
+  assert.ok(
+    flow.includes('.cys/state.json'),
+    'commands/flow.md debe chequear si hay estado de una corrida interrumpida'
+  );
+  assert.ok(
+    runPlan.includes('.cys/state.json') && runPlan.includes('bin/plan-remainder.js'),
+    'commands/run-plan.md debe chequear el estado y ofrecer bin/plan-remainder.js para reanudar'
+  );
+});
+
+test('run-plan.md maneja allDone lanzando con finishOnly en vez de fallar por tasks vacío (final review, hallazgo Important #2)', () => {
+  const runPlan = readFileSync(path.join(root, 'commands', 'run-plan.md'), 'utf8');
+  assert.ok(
+    runPlan.includes('allDone') && runPlan.includes('finishOnly: true'),
+    'run-plan.md debe detectar allDone y lanzar con finishOnly en vez de reintentar tareas ya mergeadas'
+  );
+});
+
 test('cada comando del plugin tiene frontmatter con description', () => {
   const commandsDir = path.join(root, 'commands');
   const files = readdirSync(commandsDir).filter((f) => f.endsWith('.md'));
@@ -74,4 +106,17 @@ test('cada comando del plugin tiene frontmatter con description', () => {
     assert.ok(fm, `commands/${file} necesita frontmatter ---`);
     assert.ok(fm.description && fm.description.length >= 20, `commands/${file}: la description guía la invocación`);
   }
+});
+
+test('guide y ship documentan que se superponen cuando cys:run corre con openPr: true', () => {
+  const guide = readFileSync(path.join(skillsDir, 'guide', 'SKILL.md'), 'utf8');
+  const ship = readFileSync(path.join(skillsDir, 'ship', 'SKILL.md'), 'utf8');
+  assert.ok(
+    guide.includes('openPr: true') && guide.includes('Handoff agent'),
+    'cys:guide debe explicar cuándo cys:ship es redundante con el Handoff automático'
+  );
+  assert.ok(
+    ship.includes('openPr: true') && ship.includes('Not needed'),
+    'cys:ship debe aclarar que no hace falta invocarlo si cys:run ya abrió el PR solo'
+  );
 });

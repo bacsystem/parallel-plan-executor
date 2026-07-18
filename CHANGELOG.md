@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.5 — 2026-07-17
+
+New (Fase 4b — see `docs/cys/specs/2026-07-17-fase-4b-state-recovery-design.md`):
+
+- `.cys/state.json`: the engine writes a full per-task status snapshot
+  at start and after every task settles, and deletes it only once the
+  script reaches its own natural end — its mere presence signals a run
+  got cut off before finishing, not that something failed normally.
+- `bin/plan-remainder.js`: deterministic CLI that reduces a plan +
+  `state.json` to only what's left, for `/cys:run-plan` to resume with.
+- `/cys:flow` and `/cys:run-plan` detect leftover `.cys/state.json` and
+  offer to resume instead of starting over.
+
+Fixed (post-review, same branch — the whole-branch review's two
+Important findings, resolved before merge):
+
+- `bin/plan-remainder.js` now compares `planPath` via resolved paths
+  instead of a literal string, so a command's LLM-judged "same plan"
+  match (e.g. relative vs. absolute, backslashes on Windows) can't be
+  rejected by a stricter downstream check.
+- A run interrupted after every task merged but before Final
+  Review/Handoff completed can now be resumed: `bin/plan-remainder.js`
+  reports `allDone: true` in that case, and `args.finishOnly` (new,
+  optional) tells the engine to skip straight to Final Review/Handoff
+  instead of requiring a non-empty task list.
+
+Known follow-ups (documented, not yet fixed): the design spec's
+`updatedAt` field was dropped from `state.json` without being explicitly
+descoped; the initial `state.json` write is mislabeled under the
+`Merge` phase; the README doesn't yet document `bin/plan-remainder.js`
+or the resume flow.
+
+## 0.6.4 — 2026-07-17
+
+Fixed (Fase 4a — see `docs/cys/specs/2026-07-17-fase-4a-quick-fixes-design.md`):
+
+- `/cys:flow` and `/cys:run-plan` now create the integration branch from
+  `develop` if it doesn't already exist, right before launching. Both
+  commands previously assumed it existed — a missing branch made the
+  first task's merge fail with a confusing "not a valid object name"
+  error, found live during the cys independence-proof smoke test.
+- The workflow template moved from `workflows/` to `workflows-src/` —
+  `cys:parallel-plan-executor` was appearing twice in the installed
+  plugin's skill listing because `workflows/` held two files carrying an
+  identical `Workflow`-tool `meta` block (the hand-edited template and
+  the generated artifact); `workflows/` now holds only the generated file.
+
+## 0.6.3 — 2026-07-17
+
+Changed:
+
+- Progress log lines now name the `task-N` branch explicitly: `Task N:
+  started (implement) on branch task-N`, and the settle line reads
+  `... — Task N (branch task-N) <label>`. Found useful during the cys
+  independence-proof smoke test (first real run against a plugin
+  installed from GitHub) — following a run across worktrees or `git log`
+  was one mental hop harder without it.
+
 ## 0.6.2 — 2026-07-17
 
 New (cys F3 — see `docs/cys/specs/2026-07-16-cys-ecosystem-design.md`):
