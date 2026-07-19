@@ -39,6 +39,25 @@ test('serializa en cadena las tareas que tocan el mismo archivo', () => {
   assert.deepEqual(graph[3], [2], 'la tarea 3 debe depender del ÚLTIMO que tocó el archivo, no del primero');
 });
 
+test('advierte cuando una tarea consume un símbolo que nadie produce', () => {
+  const tasks = [{
+    id: 1, title: 'A',
+    files: { create: [], modify: [], test: [] },
+    interfaces: { consumes: ['noExiste'], produces: [] },
+  }];
+  const { warnings } = buildGraphWithDiagnostics(tasks);
+  assert.match(warnings.join('\n'), /task 1.*noExiste.*no task produces it/i);
+});
+
+test('no advierte cuando el símbolo consumido sí tiene productor', () => {
+  const tasks = [
+    { id: 1, title: 'A', files: { create: [], modify: [], test: [] }, interfaces: { consumes: [], produces: ['foo'] } },
+    { id: 2, title: 'B', files: { create: [], modify: [], test: [] }, interfaces: { consumes: ['foo'], produces: [] } },
+  ];
+  const { warnings } = buildGraphWithDiagnostics(tasks);
+  assert.equal(warnings.filter((w) => /produces it/i.test(w)).length, 0);
+});
+
 test('throws on a cyclic dependency', () => {
   const tasks = [
     { id: 1, title: 'A', files: { create: [], modify: [], test: [] }, interfaces: { consumes: ['b'], produces: ['a'] } },

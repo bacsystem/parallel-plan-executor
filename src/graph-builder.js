@@ -44,7 +44,18 @@ export function buildGraphWithDiagnostics(tasks) {
   for (const task of tasks) {
     for (const symbol of task.interfaces.consumes) {
       const producerId = producedBy.get(symbol);
-      if (producerId !== undefined && producerId !== task.id) {
+      if (producerId === undefined) {
+        // Igual de silencioso que un typo hasta ahora: la tarea sigue sin esa dependencia
+        // y nadie se entera. No es error — un símbolo ya presente en el repo antes del
+        // plan es un consumo legítimo sin productor — pero merece el mismo aviso que ya
+        // existe para un productor duplicado o un valor vacío.
+        warnings.push(
+          `Task ${task.id} consumes \`${symbol}\` but no task produces it — ` +
+          `likely a typo or a missing producer task; no dependency was created`
+        );
+        continue;
+      }
+      if (producerId !== task.id) {
         deps.get(task.id).add(producerId);
       }
     }

@@ -209,7 +209,7 @@ test('advierte cuando una tarea consume un símbolo que nadie produce', () => {
     interfaces: { consumes: ['noExiste'], produces: [] },
   }];
   const { warnings } = buildGraphWithDiagnostics(tasks);
-  assert.match(warnings.join('\n'), /noExiste.*task 1.*no task produces it/i);
+  assert.match(warnings.join('\n'), /task 1.*noExiste.*no task produces it/i);
 });
 
 test('no advierte cuando el símbolo consumido sí tiene productor', () => {
