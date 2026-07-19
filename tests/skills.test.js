@@ -75,6 +75,18 @@ test('los comandos crean la integrationBranch desde develop si no existe antes d
   }
 });
 
+test('los comandos crean la integrationBranch con --no-track, para no heredar el upstream de origin/develop en silencio (hallazgo real de persons-crud)', () => {
+  const flow = readFileSync(path.join(root, 'commands', 'flow.md'), 'utf8');
+  const runPlan = readFileSync(path.join(root, 'commands', 'run-plan.md'), 'utf8');
+  for (const [name, content] of [['flow.md', flow], ['run-plan.md', runPlan]]) {
+    assert.ok(
+      content.includes('branch --no-track <integration-branch> develop'),
+      `commands/${name}: sin --no-track, si solo existe origin/develop (no develop local), git resuelve la rama y ` +
+        `por defecto le pone el tracking apuntando a origin/develop — un push sin refspec explícito empujaría ahí`
+    );
+  }
+});
+
 test('los comandos detectan .cys/state.json de una corrida interrumpida (Fase 4b)', () => {
   const flow = readFileSync(path.join(root, 'commands', 'flow.md'), 'utf8');
   const runPlan = readFileSync(path.join(root, 'commands', 'run-plan.md'), 'utf8');
@@ -172,4 +184,55 @@ test('guide documenta la alternativa manual cuando cys:run no está disponible (
       guide.includes('execute its tasks yourself in dependency order'),
     'cys:guide debe explicar qué hacer cuando cys:run no está disponible (Cursor, por ahora)'
   );
+});
+
+test('code-standards documenta que la unicidad de negocio necesita respaldo a nivel de base de datos, no solo un chequeo en la capa de servicio (TOCTOU, hallazgo real de persons-crud)', () => {
+  const codeStandards = readFileSync(path.join(skillsDir, 'check', 'references', 'code-standards.md'), 'utf8');
+  assert.ok(
+    codeStandards.includes('TOCTOU') && codeStandards.includes('database-level backstop'),
+    'code-standards.md debe advertir sobre invariantes de unicidad sin respaldo de base de datos'
+  );
+});
+
+test('plan exige un test por fila cuando el spec afirma cobertura exhaustiva de una tabla (hallazgo real de persons-crud)', () => {
+  const plan = readFileSync(path.join(skillsDir, 'plan', 'SKILL.md'), 'utf8');
+  assert.ok(
+    plan.includes('Exhaustive-coverage claims'),
+    'cys:plan debe exigir enumerar cada fila como test explícito cuando el spec afirma cobertura exhaustiva'
+  );
+});
+
+test('plan exige forzar mecánicamente una versión de lenguaje/runtime fijada en Global Constraints, no solo declararla (hallazgo real de persons-crud, JDK 17 sin enforcer)', () => {
+  const plan = readFileSync(path.join(skillsDir, 'plan', 'SKILL.md'), 'utf8');
+  assert.ok(
+    plan.includes('Version/toolchain enforcement'),
+    'cys:plan debe exigir que una versión fijada en Global Constraints quede forzada mecánicamente, no solo declarada'
+  );
+});
+
+test('plan exige revisar las aristas reales del grafo en el dry-run, no confiar solo en "warnings": [] (hallazgo real de persons-crud)', () => {
+  const plan = readFileSync(path.join(skillsDir, 'plan', 'SKILL.md'), 'utf8');
+  assert.ok(
+    plan.includes('An empty warnings array is not proof the graph is right'),
+    'cys:plan debe advertir explícitamente que un array de warnings vacío no prueba que el grafo esté bien'
+  );
+});
+
+test('design exige verificar empíricamente restricciones de entorno en vez de heredarlas de un spec/pilot anterior (hallazgo real de persons-crud: Docker asumido bloqueado sin chequear)', () => {
+  const design = readFileSync(path.join(skillsDir, 'design', 'SKILL.md'), 'utf8');
+  assert.ok(
+    design.includes('Environment-dependent constraints are verified, not inherited'),
+    'cys:design debe exigir verificar restricciones de entorno en vez de heredarlas de otro spec/pilot'
+  );
+});
+
+test('los comandos aseguran que .cys/ esté en .gitignore del repo destino antes de lanzar (hallazgo real: 21 archivos untracked listos para commitearse por accidente)', () => {
+  const flow = readFileSync(path.join(root, 'commands', 'flow.md'), 'utf8');
+  const runPlan = readFileSync(path.join(root, 'commands', 'run-plan.md'), 'utf8');
+  for (const [name, content] of [['flow.md', flow], ['run-plan.md', runPlan]]) {
+    assert.ok(
+      content.includes('Ensure `.cys/` is gitignored'),
+      `commands/${name} debe verificar y asegurar que .cys/ esté en .gitignore antes de que el run escriba ahí`
+    );
+  }
 });

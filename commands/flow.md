@@ -84,22 +84,38 @@ REPO = `${CLAUDE_PLUGIN_ROOT}`
 9. **Create the integration branch if it doesn't exist**: run
    `git -C <repo-path> show-ref --verify --quiet
    refs/heads/<integration-branch>`. If it exits non-zero, create it from `develop`:
-   `git -C <repo-path> branch <integration-branch> develop`. If
+   `git -C <repo-path> branch --no-track <integration-branch> develop`. If
    it exits 0, the branch already exists — step 8 already handled
    confirming that with the user, nothing more to do here.
+   `--no-track` matters: if the target repo has no local `develop` (only
+   `origin/develop`), git resolves `develop` against the remote-tracking
+   branch and, without `--no-track`, sets the new branch's upstream to
+   `origin/develop` by default — a later `git push` with no explicit
+   refspec from that branch would push straight to `develop`. Reported by
+   a real user who hit exactly this.
 
-10. **Launch** the `Workflow` tool with:
+10. **Ensure `.cys/` is gitignored**: check whether `<repo-path>/.gitignore`
+    already has a `.cys/` entry (a line matching `.cys/`, `.cys`, or a
+    broader pattern that already covers it). If not, append `.cys/` to
+    `.gitignore` (create the file if it doesn't exist) and commit that
+    one-line addition now, before the run writes anything there — task
+    briefs/reports, review diffs, `handoff.md`, `pending.md`, and
+    `progress.md` should never risk landing in the target repo's history.
+    Reported by a real user who found 21 untracked `.cys/*` files sitting
+    in a project that had never had this checked.
+
+11. **Launch** the `Workflow` tool with:
    - `scriptPath`: `REPO/workflows/parallel-plan-executor.js`
    - `args`: `{ tasks, graph, planPath, repoPath, integrationBranch,
      executorPath: REPO, openPr, pr, mergeAuthorization }` (omit the
      optional ones not provided).
 
-11. **After launching**: tell the user it runs in the background, that
+12. **After launching**: tell the user it runs in the background, that
    they can ask "how's the workflow going?" or open `/workflows`, and
    that merges may pause for their permission dialog — a click there is
    expected, not a failure.
 
-12. **Offer the manual retry guide**: ask one question, in plain
+13. **Offer the manual retry guide**: ask one question, in plain
     language — whether they want the copy-paste text for a Claude Code
     Desktop Local Routine that resumes this run unattended if it gets cut
     short. On "no", stop here. On "yes", print this block, filling in

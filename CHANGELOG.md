@@ -5,6 +5,76 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.12 — 2026-07-18
+
+Fixed:
+
+- `commands/flow.md` / `commands/run-plan.md`: both now ensure
+  `<repo-path>/.gitignore` has a `.cys/` entry (adding and committing it
+  if missing) right before launching. cys never checked this before —
+  it only "worked" in this repo because `.gitignore` here was set up by
+  hand. Any other target project had no protection: task briefs/reports,
+  review diffs, `handoff.md`, `pending.md`, and `progress.md` were one
+  `git add .` away from landing in the project's history. Reported by a
+  real user who found 21 untracked `.cys/*` files ready to be committed
+  on a project that had never had this checked.
+
+## 0.6.11 — 2026-07-18
+
+Fixed — second retrospective from the Persons CRUD pilot:
+
+- `commands/flow.md` / `commands/run-plan.md`: creating the integration
+  branch now uses `git branch --no-track <integration-branch> develop`.
+  Without `--no-track`, if the target repo has no local `develop` (only
+  `origin/develop`), git resolves `develop` against the remote-tracking
+  branch and sets the new branch's upstream to `origin/develop` by
+  default — a later `git push` with no explicit refspec from that branch
+  would push straight to `develop`. Reported by a real user who hit
+  exactly this and had to `--unset-upstream` by hand.
+
+New:
+
+- `cys:plan`'s "Parser dry-run" self-review step now explicitly requires
+  checking every edge of the printed `graph` against the DAG you
+  designed — an empty `warnings` array is not proof the graph is right,
+  only that the parser didn't flag anything.
+- `cys:design` gained a principle: environment-dependent constraints
+  (blocked binaries, no Docker, etc.) must be verified empirically for
+  the current project, not inherited from a different prior spec/pilot.
+  Found live: a Java/Spring pilot inherited "Docker probably doesn't
+  work" from an unrelated Go pilot's spec without checking — Docker was
+  actually available, and the resulting mocks-only test strategy missed
+  a real bug (`GlobalExceptionHandler` swallowing exceptions) that only
+  an integration test against a real MongoDB could have caught.
+
+## 0.6.10 — 2026-07-18
+
+New — retrospective from the Persons CRUD pilot (Spring Boot/MongoDB, run
+on another machine via Claude Code):
+
+- `.cys/state.json` now marks a task `in_progress` with its current
+  `phase` (`Implement`/`Review`/`Merge`) as it moves through execution,
+  instead of staying `pending` — indistinguishable from "hasn't started"
+  — for the task's entire run. Diagnostic only: `bin/plan-remainder.js`'s
+  resume semantics are unchanged, only `done` tasks are excluded either
+  way.
+- Task merges now always run `git merge --no-ff`, so every task leaves an
+  explicit merge commit — previously git could silently fast-forward
+  depending on execution order, producing an inconsistent history across
+  tasks of the same run.
+- `skills/check/references/code-standards.md` gained a "Data integrity"
+  section: an application-layer-only uniqueness check (no DB unique
+  index/constraint) is now an explicit review finding (TOCTOU), even when
+  the design spec only ruled out Bean-Validation-style annotations for
+  the check.
+- `cys:plan`'s self-review gained an "Exhaustive-coverage claims" rule:
+  if a spec says a test suite covers every case in a table, the plan must
+  enumerate each row as its own test step.
+- `cys:plan`'s self-review gained a "Version/toolchain enforcement" rule:
+  if Global Constraints pin an exact language/runtime version, at least
+  one task must mechanically enforce it, not just declare it in a config
+  file.
+
 ## 0.6.9 — 2026-07-18
 
 Fixed:
