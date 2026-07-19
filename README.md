@@ -31,8 +31,8 @@ plugin** described next.
 ## The cys plugin
 
 **cys** is this repo's skill plugin: five skills covering the whole flow
-**design → plan → run → check → ship**, named after the author's twin daughters,
-**Cielo y Sophia**.
+**design → plan → run → check → ship**, created by Christian Bacilio and named
+after his twin daughters, **Cielo y Sophia**.
 
 | Skill | What it does |
 |---|---|
