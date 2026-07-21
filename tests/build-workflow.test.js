@@ -380,6 +380,21 @@ test('built workflow coalesces concurrent state-write requests instead of dispat
   );
 });
 
+test('built workflow fast-exits re-dispatched already-merged tasks without re-review or re-merge (pilot bs-inventory 2026-07-21)', () => {
+  assert.ok(
+    output.includes('FAST-EXIT CHECK') && output.includes('alreadyMerged: true'),
+    'el prompt del implementador debe chequear primero (branch existe + es ancestro de la rama de integración) y reportar alreadyMerged sin re-correr tests — cada re-despacho pagaba una re-verificación completa con testcontainers'
+  );
+  assert.ok(
+    output.includes('if (impl.alreadyMerged)') && output.includes('skipping review and merge'),
+    'runTask debe cortocircuitar a settle(done) cuando el implementador confirma alreadyMerged — sin esto, cada re-despacho pagaba revisión + merge completos sobre trabajo ya integrado (63 reviews / 57 merges para 10 tareas en el piloto)'
+  );
+  assert.ok(
+    output.indexOf('if (impl.alreadyMerged)') < output.indexOf("await markInProgress(taskId, 'Review')"),
+    'el cortocircuito debe evaluarse ANTES de entrar a la fase de Review'
+  );
+});
+
 test('built workflow adds updatedAt to .cys/state.json via the write agent\'s own date command (pending.md gap, Fase 4b design)', () => {
   const writeStateIndex = output.indexOf('function writeState()');
   assert.ok(writeStateIndex >= 0, 'debe existir writeState()');

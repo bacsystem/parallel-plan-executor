@@ -432,6 +432,7 @@ const IMPLEMENTER_SCHEMA = {
     concerns: { type: 'string' },
     startedAt: { type: 'string', description: 'HH:MM:SS wall-clock time when work began (from `date +%H:%M:%S`)' },
     finishedAt: { type: 'string', description: 'HH:MM:SS wall-clock time right before reporting' },
+    alreadyMerged: { type: 'boolean', description: 'true ONLY when the task branch already existed AND was already an ancestor of the integration branch before this agent did anything — i.e. a re-dispatch of finished work' },
   },
   required: ['status', 'branch', 'baseSha', 'headSha', 'reportFile', 'startedAt', 'finishedAt'],
 };
@@ -582,6 +583,16 @@ async function implement(task) {
   return agent(
     `You are implementing Task ${task.id}: "${task.title}", from the plan at ${planPath}, ` +
     `in repo ${repoPath}.\n\n` +
+    `FAST-EXIT CHECK, before anything else: run \`git -C ${repoPath} show-ref --verify ` +
+    `--quiet refs/heads/task-${task.id}\` and, if the branch exists, \`git -C ${repoPath} ` +
+    `merge-base --is-ancestor task-${task.id} ${integrationBranch}\`. If BOTH succeed, this ` +
+    `task was already implemented, reviewed, and merged in a prior invocation of this same ` +
+    `run (a re-dispatch, e.g. after a resume) — do NOT re-implement, re-run tests, or ` +
+    `re-verify anything beyond those two git commands. Report immediately with ` +
+    `alreadyMerged: true, status DONE, the branch's real head SHA (\`git -C ${repoPath} ` +
+    `rev-parse task-${task.id}\`) as headSha, and a one-line commitSummary saying the work ` +
+    `was found already merged. Real pilot data: re-dispatched tasks each burned a full ` +
+    `test-suite re-verification (testcontainers included) for zero new information.\n\n` +
     `Other tasks run in parallel against that same repository — NEVER switch branches or ` +
     `edit files in ${repoPath} itself. Your very first repo action: create your own ` +
     `isolated worktree by running \`git -C ${repoPath} worktree add ${worktreeDir} ` +
@@ -712,6 +723,20 @@ async function executeTask(taskId) {
   log(`Task ${taskId}: started (implement) on branch task-${taskId}`);
   let impl = ensureAgentResult(taskId, await implement(task), 'implementer');
   await assertNotBlocked(taskId, impl);
+
+  // Salida rápida (piloto bs-inventory 2026-07-21): una tarea re-despachada tras un
+  // resume (el caché invalida por prefijo, así que pasa seguido) volvía a pagar
+  // revisión + merge completos sobre trabajo ya integrado — 63 agentes de review y
+  // 57 de merge para 10 tareas. Si el implementador confirmó vía git que la rama ya
+  // es ancestro de la rama de integración, no hay nada nuevo que revisar ni mergear.
+  if (impl.alreadyMerged) {
+    log(`Task ${taskId}: already merged in a prior invocation — skipping review and merge`);
+    await settle(taskId, 'done', 'already merged (re-dispatch fast-exit)', {
+      branch: `task-${taskId}`,
+      headSha: impl.headSha,
+    });
+    return impl;
+  }
 
   await markInProgress(taskId, 'Review');
   let verdict = ensureAgentResult(taskId, await review(task, impl), 'reviewer');
