@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.6.23 — 2026-07-22
+
+Fixed:
+
+- `src/plan-parser.js`: twin of the 0.6.22 `**Interfaces:**` fix, same
+  root cause, other section — `parseFiles` still used the old
+  `extractSection`, which flattened "section missing" and "section
+  present but empty" to `''`. A header typo (`**File:**`, `**Archivos:**`)
+  silently removed the task from file-based serialization, so two tasks
+  sharing a file could run in parallel and hit an avoidable merge
+  conflict, with a misleading symptom (the missing dependency looked
+  like a Consumes/Produces problem, not a Files one). `parseFiles` now
+  uses `extractOptionalSection` (same as `parseInterfaces`) and warns
+  when the section is missing entirely. `extractSection` is now unused
+  and has been removed. `skills/plan/SKILL.md` extended to cover both
+  headers.
+
 ## 0.6.22 — 2026-07-22
 
 Fixed:
