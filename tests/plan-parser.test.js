@@ -184,6 +184,9 @@ test('una tarea sin sección **Interfaces:** genera un warning (hallazgo de revi
   const text = [
     '### Task 1: Producer fine',
     '',
+    '**Files:**',
+    '- Create: `a.js`',
+    '',
     '**Interfaces:**',
     '- Produces: `foo`',
     '',
@@ -207,6 +210,40 @@ test('una tarea sin sección **Interfaces:** genera un warning (hallazgo de revi
   );
 });
 
+test('una tarea sin sección **Files:** genera un warning (mismo mecanismo que el fix de **Interfaces:** en 0.6.22: extractSection aplanaba ausente y vacío a "", así que un typo como **File:** borraba la serialización por archivos de la tarea sin aviso)', () => {
+  const text = [
+    '### Task 1: Header typo',
+    '**File:**',
+    '- Create: `a.js`',
+    '**Interfaces:**',
+    '- Consumes: None',
+    '- Produces: None',
+  ].join('\n');
+
+  const { tasks, warnings } = parsePlanWithDiagnostics(text);
+
+  assert.deepEqual(tasks[0].files, { create: [], modify: [], test: [] });
+  assert.match(
+    warnings.join('\n'),
+    /Task 1.*no .*Files:.*section/i,
+    'la ausencia de **Files:** debe avisar — sin ella la tarea es invisible para la serialización por archivos'
+  );
+});
+
+test('una tarea CON sección **Files:** correcta no gana warnings nuevos (regresión)', () => {
+  const text = [
+    '### Task 1: Fine',
+    '**Files:**',
+    '- Create: `a.js`',
+    '**Interfaces:**',
+    '- Consumes: None',
+    '- Produces: None',
+  ].join('\n');
+
+  const { warnings } = parsePlanWithDiagnostics(text);
+  assert.equal(warnings.filter((w) => /Files/.test(w)).length, 0);
+});
+
 test('el plan de ejemplo hello-parallel no gana warnings nuevos (regresión: es un plan bien formado)', () => {
   const examplePlan = readFileSync(
     path.join(here, '../examples/hello-parallel/plan.md'),
@@ -219,6 +256,9 @@ test('el plan de ejemplo hello-parallel no gana warnings nuevos (regresión: es 
 test('warns cuando una línea Consumes/Produces con contenido no tiene ningún backtick', () => {
   const text = [
     '### Task 1: A',
+    '',
+    '**Files:**',
+    '- Create: `a.js`',
     '',
     '**Interfaces:**',
     '- Produces: makeWidget() factory',
@@ -235,6 +275,9 @@ test('warns cuando una línea Consumes/Produces con contenido no tiene ningún b
 test('un símbolo de 1 carácter se descarta con un warning que dice la causa REAL (hallazgo de revisión externa 2026-07-22: el warning genérico "no backtick-quoted symbols" mentía — la línea sí los tenía)', () => {
   const text = [
     '### Task 1: Uses short symbol',
+    '',
+    '**Files:**',
+    '- Create: `a.js`',
     '',
     '**Interfaces:**',
     '- Consumes: `x`',
@@ -257,6 +300,9 @@ test('no warnea por "None" ni por líneas correctamente backtickeadas', () => {
   const text = [
     '### Task 1: A',
     '',
+    '**Files:**',
+    '- Create: `a.js`',
+    '',
     '**Interfaces:**',
     '- Consumes: None',
     '- Produces: None (pure scaffolding)',
@@ -264,6 +310,9 @@ test('no warnea por "None" ni por líneas correctamente backtickeadas', () => {
     '- [ ] **Step 1: x**',
     '',
     '### Task 2: B',
+    '',
+    '**Files:**',
+    '- Create: `b.js`',
     '',
     '**Interfaces:**',
     '- Consumes: `makeA()`',
@@ -283,6 +332,9 @@ test('warns cuando Consumes/Produces queda vacío después de los dos puntos, co
   const text = [
     '### Task 1: A',
     '',
+    '**Files:**',
+    '- Create: `a.js`',
+    '',
     '**Interfaces:**',
     '- Consumes:',
     '  - `some.Symbol`',
@@ -301,6 +353,9 @@ test('warns cuando Consumes/Produces queda vacío después de los dos puntos, co
 test('warns (sin el hint de nested-list) cuando queda vacío sin un sub-bullet siguiente', () => {
   const text = [
     '### Task 1: A',
+    '',
+    '**Files:**',
+    '- Create: `a.js`',
     '',
     '**Interfaces:**',
     '- Consumes:',

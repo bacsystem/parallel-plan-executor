@@ -15,7 +15,7 @@ export function parsePlanWithDiagnostics(planText) {
     tasks.push({
       id,
       title,
-      files: parseFiles(body),
+      files: parseFiles(body, id, warnings),
       interfaces: parseInterfaces(body, id, warnings),
     });
   }
@@ -35,21 +35,30 @@ const SECTION_END = '(?=\\n\\*\\*[A-Z][^*\\n]*:\\*\\*(?:\\n|$)|\\n- \\[ \\]|$)';
 const FILES_SECTION_RE = new RegExp(`\\*\\*Files:\\*\\*\\n([\\s\\S]*?)${SECTION_END}`);
 const INTERFACES_SECTION_RE = new RegExp(`\\*\\*Interfaces:\\*\\*\\n([\\s\\S]*?)${SECTION_END}`);
 
-function extractSection(body, sectionRe) {
-  const match = body.match(sectionRe);
-  return match ? match[1] : '';
-}
-
-// A diferencia de extractSection (que aplana "sin match" y "match vacío" a ''), esta
-// devuelve null cuando la sección falta por completo, para que parseInterfaces pueda
-// distinguir "no hay sección" de "la sección está pero vacía".
+// Devuelve null cuando la sección falta por completo (a diferencia de un simple ''),
+// para que parseFiles/parseInterfaces puedan distinguir "no hay sección" de "la
+// sección está pero vacía" y avisar solo en el primer caso.
 function extractOptionalSection(body, sectionRe) {
   const match = body.match(sectionRe);
   return match ? match[1] : null;
 }
 
-function parseFiles(body) {
-  const section = extractSection(body, FILES_SECTION_RE);
+function parseFiles(body, taskId, warnings) {
+  const section = extractOptionalSection(body, FILES_SECTION_RE);
+  if (section === null) {
+    // Mismo mecanismo que el fix de **Interfaces:** (0.6.22): un typo en el header
+    // (**File:**, **Archivos:**) dejaba la tarea sin archivos declarados en silencio,
+    // volviéndola invisible para la serialización por archivos (fileOwner) — dos
+    // tareas compartiendo un archivo corrían en paralelo y chocaban en el merge.
+    // Warning, no error: una tarea sin archivos puede ser legítima (p. ej. solo docs
+    // fuera del repo), aunque en planes de cys:plan la sección siempre existe.
+    warnings.push(
+      `Task ${taskId}: no **Files:** section found — file-based serialization ` +
+      `cannot see this task; if it truly touches no files, that's fine, but a ` +
+      `header typo here means overlapping tasks will run in parallel and conflict`
+    );
+    return { create: [], modify: [], test: [] };
+  }
   const files = { create: [], modify: [], test: [] };
   for (const line of section.split('\n')) {
     const m = line.match(/^-\s*(Create|Modify|Test):\s*`([^`]+)`/);
